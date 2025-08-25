@@ -1,0 +1,16 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.userosscache
+*.suo
+
+# SQLite dev DB
+*.db
+*.db-shm
+*.db-wal
+
+# Node (for the client later)
+node_modules/
+dist/
