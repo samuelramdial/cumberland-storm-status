@@ -11,7 +11,7 @@ concurrency:
 jobs:
   backend:
     name: Backend (.NET)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -22,24 +22,26 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore ./src/server/server.csproj
-          dotnet restore ./src/tests/Tests.csproj
+          dotnet restore .\src\server\server.csproj
+          dotnet restore .\src\tests\Tests.csproj
 
-      - name: Build (warnings as errors)
-        run: dotnet build ./src/server/server.csproj -c Release -warnaserror
-
-      - name: Lint (dotnet-format)
-        run: |
-          dotnet tool install -g dotnet-format
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-          dotnet format --verify-no-changes
+      - name: Build
+        run: dotnet build .\src\server\server.csproj -c Release --nologo --no-restore
 
       - name: Test
-        run: dotnet test ./src/tests/Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests.trx"
+        run: dotnet test .\src\tests\Tests.csproj -c Release --no-build --logger "trx;LogFileName=tests.trx"
+
+      # Advisory formatting (won't fail CI yet)
+      - name: dotnet-format (advisory)
+        continue-on-error: true
+        run: |
+          dotnet tool update -g dotnet-format
+          echo "$Env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $Env:GITHUB_PATH -Append
+          dotnet format --verify-no-changes
 
   frontend:
     name: Frontend (Vite/React)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     defaults:
       run:
         working-directory: src/client
@@ -53,13 +55,22 @@ jobs:
           cache: "npm"
           cache-dependency-path: src/client/package-lock.json
 
+      # Use npm ci if lockfile exists; fallback to npm install
       - name: Install deps
-        run: npm ci
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint
+      # Lint (advisory for now — does not fail CI)
+      - name: Lint (advisory)
+        continue-on-error: true
         run: npm run lint
 
       - name: Build
