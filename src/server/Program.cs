@@ -1,18 +1,38 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+// Single-project setup (server.csproj) with Api/, Domain/, Infrastructure/ inside.
+// No namespaces required if your codebase doesn't use them.
+
 var builder = WebApplication.CreateBuilder(args);
 
-// MVC controllers + Swagger
-builder.Services.AddControllers();
+// Controllers + JSON: enums as "OPEN"/"PARTIAL"/"CLOSED"
+builder.Services.AddControllers().AddJsonOptions(o =>
+{
+    o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
+});
+
+// Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// EF Core (SQLite)
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+// NCDOT client service (used by RoadClosuresController)
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<NcTrafficService>(); // ctor sets BaseAddress in the service
+
+// If you ever skip the Vite proxy and call API directly from http://localhost:5173,
+// uncomment this CORS block and the app.UseCors("DevCors") line below.
+/*
+builder.Services.AddCors(o =>
+{
+    o.AddPolicy("DevCors", p => p
+        .WithOrigins("http://localhost:5173")
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+*/
 
 var app = builder.Build();
 
@@ -22,41 +42,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Only force HTTPS outside dev
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+// If you're running pure HTTP on :5052, keep HTTPS redirection off in dev.
+// app.UseHttpsRedirection();
 
-app.UseAuthorization();
+// Uncomment if you enabled the DevCors policy above.
+// app.UseCors("DevCors");
+
 app.MapControllers();
 
-// ---- Dev seed: create DB & sample data ----
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-
-    if (!db.Zones.Any())
-    {
-        db.Zones.AddRange(
-            new Zone { Name = "North", ColorHex = "#2b6cb0" },
-            new Zone { Name = "South", ColorHex = "#38a169" }
-        );
-    }
-
-    if (!db.RoadClosures.Any())
-    {
-        db.RoadClosures.AddRange(
-            new RoadClosure { RoadName = "Pamalee Dr", Status = "PARTIAL", Note = "Standing water", Lat = 35.0930, Lng = -78.9220 },
-            new RoadClosure { RoadName = "Cedar Creek Rd", Status = "CLOSED", Note = "Debris on roadway", Lat = 35.0187, Lng = -78.7994 }
-        );
-    }
-    await db.SaveChangesAsync();
-}
-// -------------------------------------------
-
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+// Optional: redirect root to Swagger when browsing to http://localhost:5052
+// app.MapGet("/", () => Results.Redirect("/swagger"));
 
 app.Run();
-public partial class Program { }
+
