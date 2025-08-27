@@ -135,3 +135,8 @@ a:hover{ text-decoration:underline; }
   border:1px solid var(--border);
   color:var(--text);
 }
+
+/* Leaflet image sizing guard (prevents global img rules from breaking markers) */
+.leaflet-container img {
+  max-width: none !important;
+}

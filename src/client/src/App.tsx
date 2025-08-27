@@ -2,17 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import * as L from 'leaflet'
 
-// ✅ Ensure Leaflet marker icons work with Vite/Vercel bundling
+// ✅ Bring in Leaflet marker images so Vite serves them correctly
 import marker2x from 'leaflet/dist/images/marker-icon-2x.png'
 import marker from 'leaflet/dist/images/marker-icon.png'
 import shadow from 'leaflet/dist/images/marker-shadow.png'
-L.Icon.Default.mergeOptions({
+
+// ✅ Define a concrete default icon (with explicit sizes/anchors)
+const DefaultIcon = L.icon({
   iconRetinaUrl: marker2x,
   iconUrl: marker,
   shadowUrl: shadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
 })
 
-// Types
+// ✅ Make every <Marker /> use it by default
+L.Marker.prototype.options.icon = DefaultIcon
+
 type RoadClosure = {
   id: number
   roadName: string
@@ -23,7 +31,6 @@ type RoadClosure = {
   lng?: number | null
 }
 
-// API helpers (relative paths; Vercel rewrite will proxy in prod)
 async function getClosures(status?: string) {
   const q = status ? `?status=${encodeURIComponent(status)}` : ''
   const r = await fetch(`/api/closures${q}`)
@@ -50,7 +57,7 @@ async function createDebrisRequest(body: {
   return (await r.json()) as { id: number }
 }
 
-// Small helper to force Leaflet to recalc size after first paint
+// Nudge Leaflet to recalc size on first paint
 function MapResizeFix() {
   const map = useMap()
   useEffect(() => {
@@ -69,15 +76,9 @@ export default function App() {
     getClosures(status).then(setClosures).catch(e => setError(e.message))
   }, [status])
 
-  // Default map center = Cumberland County / Fayetteville, NC
   const center = useMemo<[number, number]>(() => [35.0527, -78.8784], [])
-
-  // Only plot items with valid numeric coords
   const points = useMemo(
-    () =>
-      closures.filter(
-        c => typeof c.lat === 'number' && typeof c.lng === 'number'
-      ),
+    () => closures.filter(c => typeof c.lat === 'number' && typeof c.lng === 'number'),
     [closures]
   )
 
@@ -90,16 +91,10 @@ export default function App() {
       <section className="panel section" aria-labelledby="closures-heading">
         <div className="controls">
           <h2 id="closures-heading" style={{ margin: 0 }}>Road Closures</h2>
-          <span className="badge">
-            <strong>Total:</strong>&nbsp;{closures.length}
-          </span>
+          <span className="badge"><strong>Total:</strong>&nbsp;{closures.length}</span>
           <label style={{ marginLeft: 'auto' }}>
             <span className="small" style={{ marginRight: 6 }}>Filter</span>
-            <select
-              className="select"
-              value={status}
-              onChange={e => setStatus(e.target.value)}
-            >
+            <select className="select" value={status} onChange={e => setStatus(e.target.value)}>
               <option value="">All</option>
               <option value="OPEN">OPEN</option>
               <option value="PARTIAL">PARTIAL</option>
@@ -130,9 +125,7 @@ export default function App() {
                   {c.status}
                 </span>
                 {c.note ? <span> — {c.note}</span> : null}{' '}
-                <span className="small">
-                  (updated {new Date(c.updatedAt).toLocaleString()})
-                </span>
+                <span className="small">(updated {new Date(c.updatedAt).toLocaleString()})</span>
               </li>
             ))}
           </ul>
@@ -146,7 +139,7 @@ export default function App() {
             center={center}
             zoom={11}
             className="map-root"
-            style={{ height: 420, width: '100%' }} // hard guarantee for prod
+            style={{ height: 420, width: '100%' }}
             scrollWheelZoom
           >
             <MapResizeFix />
@@ -154,7 +147,7 @@ export default function App() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
             />
-            {points.map((c) => (
+            {points.map(c => (
               <Marker key={c.id} position={[c.lat as number, c.lng as number]}>
                 <Popup>
                   <div style={{ maxWidth: 260 }}>
@@ -206,10 +199,7 @@ function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
         notes: notes || undefined,
       })
       onSubmitted(r.id)
-      setFullName('')
-      setAddress('')
-      setEmail('')
-      setNotes('')
+      setFullName(''); setAddress(''); setEmail(''); setNotes('')
     } catch (err: any) {
       setError(err.message || 'Submit failed')
     } finally {
@@ -235,11 +225,7 @@ function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
         <span>Notes</span>
         <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
       </label>
-      {error && (
-        <p className="error" role="alert" style={{ marginTop: 6 }}>
-          {error}
-        </p>
-      )}
+      {error && <p className="error" role="alert" style={{ marginTop: 6 }}>{error}</p>}
       <div className="actions">
         <button type="submit" className="button primary" disabled={busy}>
           {busy ? 'Submitting…' : 'Submit'}

@@ -1,7 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 
-// ✅ Load global styles and Leaflet's CSS
+// ✅ Global styles + Leaflet CSS
 import './index.css'
 import 'leaflet/dist/leaflet.css'
 
