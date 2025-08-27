@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://cumberland-storm-api-ahcud3ezd4agbafm.canadacentral-01.azurewebsites.net/api/$1"
+    }
+  ]
+}
