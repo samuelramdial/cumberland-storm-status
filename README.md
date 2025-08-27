@@ -221,7 +221,7 @@ Jobs:
 
 Add a README badge:
 ```md
-[![CI](https://github.com/<your-user-or-org>/<your-repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-user-or-org>/<your-repo>/actions/workflows/ci.yml)
+[![CI](https://github.com/samuelramdial/cumberland-storm-status/actions/workflows/ci.yml/badge.svg)](https://github.com/samuelramdial/cumberland-storm-status/actions/workflows/ci.yml)
 ```
 
 ---
@@ -284,5 +284,5 @@ Add a README badge:
 
 ## License & Acknowledgements
 
-- **License:** MIT (or your preferred license)
+- **License:** MIT
 - **Thanks:** OpenStreetMap contributors (tiles & data) and NCDOT incidents feed for public road disruption data.
