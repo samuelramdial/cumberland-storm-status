@@ -1,20 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import * as L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 
-// ---------- Types ----------
+// ✅ Ensure Leaflet marker icons work with Vite/Vercel bundling
+import marker2x from 'leaflet/dist/images/marker-icon-2x.png'
+import marker from 'leaflet/dist/images/marker-icon.png'
+import shadow from 'leaflet/dist/images/marker-shadow.png'
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: marker2x,
+  iconUrl: marker,
+  shadowUrl: shadow,
+})
+
+// Types
 type RoadClosure = {
   id: number
   roadName: string
-  status: 'OPEN' | 'PARTIAL' | 'CLOSED' | string
+  status: 'OPEN' | 'PARTIAL' | 'CLOSED'
   note?: string
   updatedAt: string
-  lat?: number
-  lng?: number
+  lat?: number | null
+  lng?: number | null
 }
 
-// ---------- API helpers ----------
+// API helpers (relative paths; Vercel rewrite will proxy in prod)
 async function getClosures(status?: string) {
   const q = status ? `?status=${encodeURIComponent(status)}` : ''
   const r = await fetch(`/api/closures${q}`)
@@ -41,36 +50,15 @@ async function createDebrisRequest(body: {
   return (await r.json()) as { id: number }
 }
 
-// ---------- Leaflet marker icon fix (Vite) ----------
-const markerIcon = L.icon({
-  iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).toString(),
-  iconRetinaUrl: new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).toString(),
-  shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).toString(),
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-})
-
-// ---------- Map helpers ----------
-const DEFAULT_CENTER: [number, number] = [35.0527, -78.8784] // Fayetteville / Cumberland County
-const DEFAULT_ZOOM = 11
-
-function FitBoundsOnData({ points }: { points: Array<[number, number]> }) {
+// Small helper to force Leaflet to recalc size after first paint
+function MapResizeFix() {
   const map = useMap()
   useEffect(() => {
-    if (!points.length) return
-    if (points.length === 1) {
-      map.setView(points[0], 13)
-      return
-    }
-    const bounds = L.latLngBounds(points)
-    map.fitBounds(bounds, { padding: [30, 30] })
-  }, [points, map])
+    setTimeout(() => map.invalidateSize(), 0)
+  }, [map])
   return null
 }
 
-// ---------- Main App ----------
 export default function App() {
   const [closures, setClosures] = useState<RoadClosure[]>([])
   const [status, setStatus] = useState('')
@@ -81,107 +69,119 @@ export default function App() {
     getClosures(status).then(setClosures).catch(e => setError(e.message))
   }, [status])
 
+  // Default map center = Cumberland County / Fayetteville, NC
+  const center = useMemo<[number, number]>(() => [35.0527, -78.8784], [])
+
+  // Only plot items with valid numeric coords
   const points = useMemo(
     () =>
-      closures
-        .filter(c => typeof c.lat === 'number' && typeof c.lng === 'number')
-        .map(c => [c.lat as number, c.lng as number] as [number, number]),
+      closures.filter(
+        c => typeof c.lat === 'number' && typeof c.lng === 'number'
+      ),
     [closures]
   )
 
   return (
     <main className="container">
-      <header className="page-header">
-        <h1>Cumberland Storm Status</h1>
+      <header className="header">
+        <h1 className="title">Cumberland Storm Status</h1>
       </header>
 
-      {/* Closures list + filter */}
-      <section className="card" aria-labelledby="closures-heading">
-        <div className="card-header">
-          <h2 id="closures-heading">Road Closures</h2>
-          <div className="filters">
-            <label className="select">
-              <span>Status</span>
-              <select value={status} onChange={e => setStatus(e.target.value)}>
-                <option value="">All</option>
-                <option value="OPEN">OPEN</option>
-                <option value="PARTIAL">PARTIAL</option>
-                <option value="CLOSED">CLOSED</option>
-              </select>
-            </label>
-          </div>
+      <section className="panel section" aria-labelledby="closures-heading">
+        <div className="controls">
+          <h2 id="closures-heading" style={{ margin: 0 }}>Road Closures</h2>
+          <span className="badge">
+            <strong>Total:</strong>&nbsp;{closures.length}
+          </span>
+          <label style={{ marginLeft: 'auto' }}>
+            <span className="small" style={{ marginRight: 6 }}>Filter</span>
+            <select
+              className="select"
+              value={status}
+              onChange={e => setStatus(e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="OPEN">OPEN</option>
+              <option value="PARTIAL">PARTIAL</option>
+              <option value="CLOSED">CLOSED</option>
+            </select>
+          </label>
         </div>
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="small" style={{ color: 'crimson' }}>{error}</p>}
 
         {closures.length === 0 ? (
-          <p className="muted">No records.</p>
+          <p className="small">No records.</p>
         ) : (
           <ul className="list">
             {closures.map(c => (
-              <li key={c.id} className="list-item">
-                <div className="row">
-                  <strong className="name">{c.roadName}</strong>
-                  <span className={`badge ${c.status.toLowerCase()}`}>{c.status}</span>
-                </div>
-                {c.note && <div className="note">{c.note}</div>}
-                <div className="subtle">
-                  Updated {new Date(c.updatedAt).toLocaleString()}
-                  {typeof c.lat === 'number' && typeof c.lng === 'number'
-                    ? ` · (${c.lat.toFixed(4)}, ${c.lng.toFixed(4)})`
-                    : ''}
-                </div>
+              <li key={c.id}>
+                <strong>{c.roadName}</strong>{' '}
+                <span
+                  className={
+                    c.status === 'CLOSED'
+                      ? 'badge status-closed'
+                      : c.status === 'PARTIAL'
+                      ? 'badge status-partial'
+                      : 'badge status-open'
+                  }
+                  title={c.status}
+                >
+                  {c.status}
+                </span>
+                {c.note ? <span> — {c.note}</span> : null}{' '}
+                <span className="small">
+                  (updated {new Date(c.updatedAt).toLocaleString()})
+                </span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {/* Map BELOW the list (no title) */}
-      <section className="card map-card" aria-label="Map">
-        <MapContainer
-          center={DEFAULT_CENTER}
-          zoom={DEFAULT_ZOOM}
-          className="map-root"
-          scrollWheelZoom
-        >
-          <TileLayer
-            // OSM tiles — attribution required
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
-          />
-          <FitBoundsOnData points={points} />
-          {closures
-            .filter(c => typeof c.lat === 'number' && typeof c.lng === 'number')
-            .map(c => (
-              <Marker key={c.id} position={[c.lat as number, c.lng as number]} icon={markerIcon}>
+      {/* Map below the list */}
+      <section className="section">
+        <div className="panel">
+          <MapContainer
+            center={center}
+            zoom={11}
+            className="map-root"
+            style={{ height: 420, width: '100%' }} // hard guarantee for prod
+            scrollWheelZoom
+          >
+            <MapResizeFix />
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
+            />
+            {points.map((c) => (
+              <Marker key={c.id} position={[c.lat as number, c.lng as number]}>
                 <Popup>
                   <div style={{ maxWidth: 260 }}>
-                    <div style={{ fontWeight: 700 }}>{c.roadName}</div>
-                    <div style={{ margin: '6px 0' }}>
-                      <span className={`badge ${c.status.toLowerCase()}`}>{c.status}</span>
+                    <strong>{c.roadName}</strong>
+                    <div className="small" style={{ margin: '4px 0' }}>
+                      Status: <b>{c.status}</b>
                     </div>
-                    {c.note && <div style={{ marginTop: 4 }}>{c.note}</div>}
-                    <div className="subtle" style={{ marginTop: 6 }}>
+                    {c.note && <div style={{ marginTop: 6 }}>{c.note}</div>}
+                    <div className="small" style={{ marginTop: 6 }}>
                       Updated {new Date(c.updatedAt).toLocaleString()}
                     </div>
                   </div>
                 </Popup>
               </Marker>
             ))}
-        </MapContainer>
+          </MapContainer>
+        </div>
       </section>
 
-      {/* Debris request form */}
-      <section className="card" aria-labelledby="debris-heading">
-        <h2 id="debris-heading">Request Debris Pickup</h2>
+      <section className="panel section" aria-labelledby="debris-heading">
+        <h2 id="debris-heading" style={{ marginTop: 0 }}>Request Debris Pickup</h2>
         <DebrisForm onSubmitted={id => alert(`Submitted! Ticket #${id}`)} />
       </section>
     </main>
   )
 }
 
-// ---------- Debris Form ----------
 function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
   const [fullName, setFullName] = useState('')
   const [address, setAddress] = useState('')
@@ -189,12 +189,10 @@ function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [okMsg, setOkMsg] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setOkMsg(null)
     if (!fullName.trim() || !address.trim()) {
       setError('Full name and address are required.')
       return
@@ -208,13 +206,12 @@ function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
         notes: notes || undefined,
       })
       onSubmitted(r.id)
-      setOkMsg(`Request submitted! Ticket #${r.id}`)
       setFullName('')
       setAddress('')
       setEmail('')
       setNotes('')
     } catch (err: any) {
-      setError(err?.message || 'Submit failed')
+      setError(err.message || 'Submit failed')
     } finally {
       setBusy(false)
     }
@@ -222,52 +219,30 @@ function DebrisForm({ onSubmitted }: { onSubmitted: (id: number) => void }) {
 
   return (
     <form onSubmit={submit} className="form">
-      {okMsg && <div className="alert success">{okMsg}</div>}
-      {error && <div className="alert error">{error}</div>}
-
-      <label className="field">
+      <label>
         <span>Full name *</span>
-        <input
-          value={fullName}
-          onChange={e => setFullName(e.target.value)}
-          placeholder="Jane Doe"
-          required
-        />
+        <input value={fullName} onChange={e => setFullName(e.target.value)} required />
       </label>
-
-      <label className="field">
+      <label>
         <span>Address *</span>
-        <input
-          value={address}
-          onChange={e => setAddress(e.target.value)}
-          placeholder="123 Main St, Fayetteville NC"
-          required
-        />
+        <input value={address} onChange={e => setAddress(e.target.value)} required />
       </label>
-
-      <label className="field">
+      <label>
         <span>Email (optional)</span>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="name@example.com"
-        />
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
       </label>
-
-      <label className="field">
+      <label>
         <span>Notes</span>
-        <textarea
-          rows={3}
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          placeholder="Anything we should know?"
-        />
+        <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
       </label>
-
+      {error && (
+        <p className="error" role="alert" style={{ marginTop: 6 }}>
+          {error}
+        </p>
+      )}
       <div className="actions">
-        <button type="submit" className="btn" disabled={busy}>
-          {busy ? 'Submitting…' : 'Submit request'}
+        <button type="submit" className="button primary" disabled={busy}>
+          {busy ? 'Submitting…' : 'Submit'}
         </button>
       </div>
     </form>
